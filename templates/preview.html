@@ -1,95 +1,382 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Draw Redactions</title>
+    <title>PDF Redaction Preview</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .app-container {
+            max-width: 1200px;
+            margin: 30px auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            padding: 25px;
+        }
+        .header {
+            margin-bottom: 25px;
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 15px;
+        }
         .pdf-page-container {
             position: relative;
             display: inline-block;
-            margin-bottom: 20px;
+            margin: 15px;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.1);
         }
         canvas, img {
-            border: 1px solid #aaa;
+            border: 1px solid #dee2e6;
+            max-width: 100%;
+            height: auto;
         }
         .draw-layer {
             position: absolute;
             top: 0;
             left: 0;
+            cursor: crosshair;
+            z-index: 10; /* Ensure canvas is above image */
+            pointer-events: auto; /* Ensure canvas receives events */
+        }
+        .pdf-img {
+            display: block; /* Remove extra space below image */
+        }
+        .controls {
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 100;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .tool-btn {
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        .drawing-instructions {
+            background-color: #e8f4fe;
+            border-left: 4px solid #1e88e5;
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .page-indicator {
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        #drawingToolsHelp {
+            margin-top: 15px;
+        }
+        #debug-info {
+            background: #f8d7da;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+            display: none;
         }
     </style>
 </head>
 <body>
-    <h2>Draw boxes to redact sensitive areas</h2>
-
-    <form method="POST" action="{% url 'redact_confirm' %}">
-        {% csrf_token %}
-        <input type="hidden" name="boxes_json" id="boxes_json">
-        <div id="pdf-preview">
-            {% for img in images %}
-                <div class="pdf-page-container">
-                    <img src="{{ img }}" id="img_{{ forloop.counter0 }}" class="pdf-img">
-                    <canvas width="600" height="800" class="draw-layer" id="canvas_{{ forloop.counter0 }}" data-page="{{ forloop.counter0 }}"></canvas>
-                </div>
-            {% endfor %}
+    <div class="app-container">
+        <div class="header">
+            <h2>PDF Redaction Preview</h2>
+            <p class="text-muted">Highlighted areas show matching search terms. Draw additional redaction boxes if needed.</p>
         </div>
-        <br>
-        <button type="submit" onclick="saveBoxes()">Confirm & Redact</button>
-    </form>
+        
+        <div id="debug-info"></div>
+        
+        <div class="drawing-instructions">
+            <h5><i class="bi bi-pencil-square"></i> Drawing Instructions</h5>
+            <ul>
+                <li>Click and drag to draw redaction boxes over sensitive content</li>
+                <li>All highlighted terms will be automatically redacted</li>
+                <li>Your manual redactions will appear in red</li>
+            </ul>
+        </div>
+        
+        <form method="POST" action="{% url 'redact_confirm' %}">
+            {% csrf_token %}
+            <input type="hidden" name="boxes_json" id="boxes_json">
+            
+            <div class="controls">
+                <div class="row">
+                    <div class="col-md-6">
+                        <button type="button" class="btn btn-outline-secondary tool-btn" id="undoBtn">
+                            <i class="bi bi-arrow-counterclockwise"></i> Undo Last
+                        </button>
+                        <button type="button" class="btn btn-outline-danger tool-btn" id="clearBtn">
+                            <i class="bi bi-trash"></i> Clear All Boxes
+                        </button>
+                    </div>
+                    <div class="col-md-6 text-md-end mt-2 mt-md-0">
+                        <button type="submit" class="btn btn-primary" onclick="saveBoxes()">
+                            <i class="bi bi-check-circle"></i> Confirm & Create Redacted PDF
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="collapse" id="drawingToolsHelp">
+                    <div class="card card-body mt-3">
+                        <h6>How redaction works:</h6>
+                        <p>The final PDF will have black boxes covering all your selected content, making the redacted text completely unrecoverable.</p>
+                    </div>
+                </div>
+            </div>
 
+            <div id="pdf-preview" class="text-center">
+                {% for img in images %}
+                    <div class="pdf-page-container">
+                        <span class="page-indicator">Page {{ forloop.counter }}</span>
+                        <img src="{{ img }}" id="img_{{ forloop.counter0 }}" class="pdf-img" onload="setupCanvas(this)">
+                        <canvas class="draw-layer" id="canvas_{{ forloop.counter0 }}" data-page="{{ forloop.counter0 }}"></canvas>
+                    </div>
+                {% endfor %}
+            </div>
+        </form>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Initialize drawings object and canvas elements
         let drawings = {};
-
-        document.querySelectorAll(".draw-layer").forEach(canvas => {
-            const ctx = canvas.getContext("2d");
-            let startX, startY, isDrawing = false;
+        let debug = false; // Set to true to enable debug info
+        
+        // Function to set up canvas dimensions when image loads
+        function setupCanvas(img) {
+            const index = img.id.split('_')[1];
+            const canvas = document.getElementById(`canvas_${index}`);
+            
+            if (debug) {
+                document.getElementById('debug-info').style.display = 'block';
+                document.getElementById('debug-info').innerHTML += 
+                    `<p>Image ${index} loaded: ${img.width}x${img.height}</p>`;
+            }
+            
+            // Match canvas size to actual displayed image size
+            const rect = img.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+            
+            // Initialize this page's drawings array if not already done
             const page = canvas.dataset.page;
+            if (!drawings[page]) {
+                drawings[page] = [];
+            }
+            
+            // Redraw if there are already drawings for this page
+            if (drawings[page].length > 0) {
+                redrawCanvas(canvas.getContext('2d'), canvas, page);
+            }
+        }
 
-            drawings[page] = [];
-
-            canvas.addEventListener("mousedown", e => {
-                isDrawing = true;
-                const rect = canvas.getBoundingClientRect();
-                startX = e.clientX - rect.left;
-                startY = e.clientY - rect.top;
+        document.addEventListener("DOMContentLoaded", function() {
+            // Add resize handler to adjust canvas sizes when window is resized
+            window.addEventListener('resize', function() {
+                document.querySelectorAll(".pdf-img").forEach(img => {
+                    setupCanvas(img);
+                });
             });
 
-            canvas.addEventListener("mousemove", e => {
-                if (!isDrawing) return;
-                const rect = canvas.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
+            document.querySelectorAll(".draw-layer").forEach(canvas => {
+                const ctx = canvas.getContext("2d");
+                let startX, startY, isDrawing = false;
+                const page = canvas.dataset.page;
 
-                // Redraw all + preview rectangle
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                drawings[page].forEach(r => {
-                    ctx.strokeStyle = "red";
-                    ctx.strokeRect(r.x, r.y, r.w, r.h);
+                if (!drawings[page]) {
+                    drawings[page] = [];
+                }
+
+                canvas.addEventListener("mousedown", e => {
+                    isDrawing = true;
+                    const rect = canvas.getBoundingClientRect();
+                    startX = e.clientX - rect.left;
+                    startY = e.clientY - rect.top;
+                    
+                    if (debug) {
+                        document.getElementById('debug-info').innerHTML += 
+                            `<p>Mouse down at ${startX},${startY} on page ${page}</p>`;
+                    }
                 });
 
-                const width = x - startX;
-                const height = y - startY;
-                ctx.strokeStyle = "blue";
-                ctx.strokeRect(startX, startY, width, height);
+                canvas.addEventListener("mousemove", e => {
+                    if (!isDrawing) return;
+                    const rect = canvas.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+
+                    // Redraw all + preview rectangle
+                    redrawCanvas(ctx, canvas, page, startX, startY, x - startX, y - startY);
+                });
+
+                canvas.addEventListener("mouseup", e => {
+                    if (!isDrawing) return;
+                    isDrawing = false;
+                    const rect = canvas.getBoundingClientRect();
+                    const endX = e.clientX - rect.left;
+                    const endY = e.clientY - rect.top;
+
+                    // Only add if the box has some size
+                    if (Math.abs(endX - startX) > 5 && Math.abs(endY - startY) > 5) {
+                        const box = {
+                            x: Math.min(startX, endX),
+                            y: Math.min(startY, endY),
+                            w: Math.abs(endX - startX),
+                            h: Math.abs(endY - startY)
+                        };
+
+                        drawings[page].push(box);
+                        redrawCanvas(ctx, canvas, page);
+                        
+                        if (debug) {
+                            document.getElementById('debug-info').innerHTML += 
+                                `<p>Box added on page ${page}: ${JSON.stringify(box)}</p>`;
+                        }
+                    }
+                });
+                
+                // Prevent leaving the drawing state if mouse moves outside canvas
+                canvas.addEventListener("mouseleave", e => {
+                    if (isDrawing) {
+                        const rect = canvas.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+                        
+                        // End the drawing when mouse leaves canvas
+                        if (Math.abs(x - startX) > 5 && Math.abs(y - startY) > 5) {
+                            const box = {
+                                x: Math.min(startX, x),
+                                y: Math.min(startY, y), 
+                                w: Math.abs(x - startX),
+                                h: Math.abs(y - startY)
+                            };
+                            
+                            drawings[page].push(box);
+                        }
+                        
+                        isDrawing = false;
+                        redrawCanvas(ctx, canvas, page);
+                    }
+                });
+
+                // For touch devices
+                canvas.addEventListener("touchstart", e => {
+                    e.preventDefault();
+                    isDrawing = true;
+                    const rect = canvas.getBoundingClientRect();
+                    const touch = e.touches[0];
+                    startX = touch.clientX - rect.left;
+                    startY = touch.clientY - rect.top;
+                });
+
+                canvas.addEventListener("touchmove", e => {
+                    if (!isDrawing) return;
+                    e.preventDefault();
+                    const rect = canvas.getBoundingClientRect();
+                    const touch = e.touches[0];
+                    const x = touch.clientX - rect.left;
+                    const y = touch.clientY - rect.top;
+                    
+                    redrawCanvas(ctx, canvas, page, startX, startY, x - startX, y - startY);
+                });
+
+                canvas.addEventListener("touchend", e => {
+                    if (!isDrawing) return;
+                    isDrawing = false;
+                    const rect = canvas.getBoundingClientRect();
+                    
+                    // Use the last touch position
+                    const touch = e.changedTouches[0];
+                    const endX = touch.clientX - rect.left;
+                    const endY = touch.clientY - rect.top;
+
+                    if (Math.abs(endX - startX) > 5 && Math.abs(endY - startY) > 5) {
+                        const box = {
+                            x: Math.min(startX, endX),
+                            y: Math.min(startY, endY),
+                            w: Math.abs(endX - startX),
+                            h: Math.abs(endY - startY)
+                        };
+
+                        drawings[page].push(box);
+                        redrawCanvas(ctx, canvas, page);
+                    }
+                });
             });
 
-            canvas.addEventListener("mouseup", e => {
-                isDrawing = false;
-                const rect = canvas.getBoundingClientRect();
-                const endX = e.clientX - rect.left;
-                const endY = e.clientY - rect.top;
+            // Undo button functionality
+            document.getElementById("undoBtn").addEventListener("click", function() {
+                const activePage = document.activeElement.closest(".pdf-page-container");
+                if (activePage) {
+                    const canvas = activePage.querySelector("canvas");
+                    const page = canvas.dataset.page;
+                    if (drawings[page].length > 0) {
+                        drawings[page].pop();
+                        redrawCanvas(canvas.getContext("2d"), canvas, page);
+                    }
+                } else {
+                    // If no specific canvas is focused, find the last one with drawings
+                    let lastPageWithDrawings = null;
+                    for (const page in drawings) {
+                        if (drawings[page].length > 0) {
+                            lastPageWithDrawings = page;
+                        }
+                    }
+                    
+                    if (lastPageWithDrawings) {
+                        drawings[lastPageWithDrawings].pop();
+                        const canvas = document.getElementById(`canvas_${lastPageWithDrawings}`);
+                        redrawCanvas(canvas.getContext("2d"), canvas, lastPageWithDrawings);
+                    }
+                }
+            });
 
-                const box = {
-                    x: Math.min(startX, endX),
-                    y: Math.min(startY, endY),
-                    w: Math.abs(endX - startX),
-                    h: Math.abs(endY - startY)
-                };
-
-                drawings[page].push(box);
-                ctx.strokeStyle = "red";
-                ctx.strokeRect(box.x, box.y, box.w, box.h);
+            // Clear all button functionality
+            document.getElementById("clearBtn").addEventListener("click", function() {
+                if (confirm("Are you sure you want to clear all manual redaction boxes?")) {
+                    for (const page in drawings) {
+                        drawings[page] = [];
+                        const canvas = document.getElementById(`canvas_${page}`);
+                        redrawCanvas(canvas.getContext("2d"), canvas, page);
+                    }
+                }
             });
         });
+
+        function redrawCanvas(ctx, canvas, page, previewX, previewY, previewW, previewH) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw all saved boxes
+            drawings[page].forEach(r => {
+                ctx.fillStyle = "rgba(255, 0, 0, 0.3)";
+                ctx.fillRect(r.x, r.y, r.w, r.h);
+                ctx.strokeStyle = "red";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(r.x, r.y, r.w, r.h);
+            });
+            
+            // Draw preview box if we're in the middle of drawing
+            if (previewX !== undefined && previewW !== undefined) {
+                ctx.fillStyle = "rgba(0, 0, 255, 0.2)";
+                ctx.fillRect(previewX, previewY, previewW, previewH);
+                ctx.strokeStyle = "blue";
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(previewX, previewY, previewW, previewH);
+            }
+        }
 
         function saveBoxes() {
             document.getElementById("boxes_json").value = JSON.stringify(drawings);

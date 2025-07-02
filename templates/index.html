@@ -2,18 +2,78 @@
 <html>
 <head>
     <title>PDF Redaction Tool</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .app-container {
+            max-width: 800px;
+            margin: 40px auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            padding: 30px;
+        }
+        .header {
+            margin-bottom: 30px;
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 20px;
+        }
+        .form-label {
+            font-weight: 600;
+        }
+        .info-text {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .btn-primary {
+            background-color: #1e88e5;
+            border: none;
+            padding: 10px 20px;
+        }
+        .btn-primary:hover {
+            background-color: #1976d2;
+        }
+    </style>
 </head>
 <body>
-    <h1>PDF Redaction Tool</h1>
-    <form method="POST" enctype="multipart/form-data">
-        {% csrf_token %}
-        <label>Select PDF:</label><br>
-        <input type="file" name="pdf" accept=".pdf" required><br><br>
-
-        <label>Redaction Terms (comma separated):</label><br>
-        <input type="text" name="terms" placeholder="e.g. John Doe, 1234567890" required><br><br>
-
-        <button type="submit">Redact PDF</button>
-    </form>
+    <div class="app-container">
+        <div class="header">
+            <h1 class="text-center">PDF Redaction Tool</h1>
+            <p class="text-center info-text">Securely redact sensitive information from your PDF documents</p>
+        </div>
+        
+        <form method="POST" enctype="multipart/form-data">
+            {% csrf_token %}
+            
+            <div class="mb-4">
+                <label class="form-label">Select PDF document</label>
+                <input type="file" name="pdf" accept=".pdf" required class="form-control" id="pdf-upload">
+                <div class="info-text mt-2">
+                    <i class="bi bi-info-circle"></i> Supported format: PDF only
+                </div>
+            </div>
+            
+            <div class="mb-4">
+                <label class="form-label">Redaction Terms</label>
+                <input type="text" name="terms" placeholder="e.g. John Doe, 1234567890" 
+                       required class="form-control" id="terms-input">
+                <div class="info-text mt-2">
+                    <i class="bi bi-info-circle"></i> Enter comma-separated terms to search and redact automatically
+                </div>
+            </div>
+            
+            <div class="d-grid gap-2 mt-4">
+                <button type="submit" class="btn btn-primary">
+                    Continue to Preview
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
