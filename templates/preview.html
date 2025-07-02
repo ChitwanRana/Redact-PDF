@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Draw Redactions</title>
+    <style>
+        .pdf-page-container {
+            position: relative;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        canvas, img {
+            border: 1px solid #aaa;
+        }
+        .draw-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+    </style>
+</head>
+<body>
+    <h2>Draw boxes to redact sensitive areas</h2>
+
+    <form method="POST" action="{% url 'redact_confirm' %}">
+        {% csrf_token %}
+        <input type="hidden" name="boxes_json" id="boxes_json">
+        <div id="pdf-preview">
+            {% for img in images %}
+                <div class="pdf-page-container">
+                    <img src="{{ img }}" id="img_{{ forloop.counter0 }}" class="pdf-img">
+                    <canvas width="600" height="800" class="draw-layer" id="canvas_{{ forloop.counter0 }}" data-page="{{ forloop.counter0 }}"></canvas>
+                </div>
+            {% endfor %}
+        </div>
+        <br>
+        <button type="submit" onclick="saveBoxes()">Confirm & Redact</button>
+    </form>
+
+    <script>
+        let drawings = {};
+
+        document.querySelectorAll(".draw-layer").forEach(canvas => {
+            const ctx = canvas.getContext("2d");
+            let startX, startY, isDrawing = false;
+            const page = canvas.dataset.page;
+
+            drawings[page] = [];
+
+            canvas.addEventListener("mousedown", e => {
+                isDrawing = true;
+                const rect = canvas.getBoundingClientRect();
+                startX = e.clientX - rect.left;
+                startY = e.clientY - rect.top;
+            });
+
+            canvas.addEventListener("mousemove", e => {
+                if (!isDrawing) return;
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                // Redraw all + preview rectangle
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawings[page].forEach(r => {
+                    ctx.strokeStyle = "red";
+                    ctx.strokeRect(r.x, r.y, r.w, r.h);
+                });
+
+                const width = x - startX;
+                const height = y - startY;
+                ctx.strokeStyle = "blue";
+                ctx.strokeRect(startX, startY, width, height);
+            });
+
+            canvas.addEventListener("mouseup", e => {
+                isDrawing = false;
+                const rect = canvas.getBoundingClientRect();
+                const endX = e.clientX - rect.left;
+                const endY = e.clientY - rect.top;
+
+                const box = {
+                    x: Math.min(startX, endX),
+                    y: Math.min(startY, endY),
+                    w: Math.abs(endX - startX),
+                    h: Math.abs(endY - startY)
+                };
+
+                drawings[page].push(box);
+                ctx.strokeStyle = "red";
+                ctx.strokeRect(box.x, box.y, box.w, box.h);
+            });
+        });
+
+        function saveBoxes() {
+            document.getElementById("boxes_json").value = JSON.stringify(drawings);
+        }
+    </script>
+</body>
+</html>

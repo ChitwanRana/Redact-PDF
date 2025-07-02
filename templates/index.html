@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PDF Redaction Tool</title>
+</head>
+<body>
+    <h1>PDF Redaction Tool</h1>
+    <form method="POST" enctype="multipart/form-data">
+        {% csrf_token %}
+        <label>Select PDF:</label><br>
+        <input type="file" name="pdf" accept=".pdf" required><br><br>
+
+        <label>Redaction Terms (comma separated):</label><br>
+        <input type="text" name="terms" placeholder="e.g. John Doe, 1234567890" required><br><br>
+
+        <button type="submit">Redact PDF</button>
+    </form>
+</body>
+</html>
